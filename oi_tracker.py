@@ -17,11 +17,11 @@ exchange = ccxt.bitmex({
 
 markets = exchange.load_markets()
 
-interval = 5      # measure OI
-threshold = 5000  # deltaOI/sec threshold before highlighting (red/green)
-d1 = 30
-d2 = 150
-pRange = 10        # price range size
+interval = 5.     # measure OI
+threshold = 5000. # deltaOI/sec threshold before highlighting (red/green)
+d1 = 30           # d1 period in secs
+d2 = 150          # d2 period in secs
+pRange = 10       # price range size
 
 class OIDeltas:
 	d1Delta = 0
@@ -29,12 +29,14 @@ class OIDeltas:
 	totalDelta = 0
 	lock = Lock()
 	last = 0
+	ticks = 0
 
 	def __init__(self, p):
 		self.price = p
 
 	def add(self, delta):
 		self.last = delta
+		self.ticks += 1
 		with self.lock:
 			self.d1Delta += delta
 			self.removeD1(delta)
@@ -55,12 +57,13 @@ class OIDeltas:
 			self.d2Delta -= q
 
 	def __repr__(self):
-		return "  {}   last: {}    {}s: {}    {}s: {}    total: {}".format(
+		return "  {}   last: {}    {}s: {}    {}s: {}   tot: {}   avg: {}".format(
 			coloredPrice(self.price),
 			coloredValue(self.last, 5),
 			d1, coloredValue(self.d1Delta, d1),
 			d2, coloredValue(self.d2Delta, d2),
 			coloredValue(self.totalDelta, d2*2),
+			coloredValue(self.totalDelta/self.ticks if self.ticks > 0 else 1, 5, thr=threshold/2),
 		)
 
 def priceRange(p, step=10):
