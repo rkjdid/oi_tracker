@@ -71,6 +71,9 @@ priceColors = [
 	Fore.LIGHTRED_EX,
 	Fore.LIGHTBLUE_EX,
 	Fore.LIGHTGREEN_EX,
+	Fore.LIGHTMAGENTA_EX,
+	Fore.LIGHTCYAN_EX,
+	Fore.LIGHTBLACK_EX,
 ]
 
 def coloredPrice(p, step=pRange):
