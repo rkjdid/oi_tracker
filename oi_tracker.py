@@ -77,8 +77,7 @@ def coloredPrice(p, step=pRange):
 	return "{}{:>7,.0f}{}".format(priceColors[int((p / step) % len(priceColors))], p, Style.RESET_ALL)
 
 def coloredValue(v, duration, thr=threshold, padSize=12):
-	fmt = '{:>' + str(padSize) + ',.0f}'
-	s = fmt.format(v)
+	s = '{:>{pad},.0f}'.format(v, pad=padSize)
 	perSec = v / duration
 	if perSec > thr:
 		s = Fore.GREEN + s + Style.RESET_ALL
