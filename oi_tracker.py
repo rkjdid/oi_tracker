@@ -17,11 +17,13 @@ exchange = ccxt.bitmex({
 
 markets = exchange.load_markets()
 
-interval = 5.     # measure OI
-threshold = 5000. # deltaOI/sec threshold before highlighting (red/green)
-d1 = 30           # d1 period in secs
-d2 = 150          # d2 period in secs
-pRange = 10       # price range size
+# global settings
+class S:
+	interval = 5.     # measure OI
+	threshold = 5000. # deltaOI/sec threshold before highlighting (red/green)
+	d1 = 30           # d1 period in secs
+	d2 = 150          # d2 period in secs
+	pRange = 10       # price range size
 
 class OIDeltas:
 	d1Delta = 0
@@ -46,25 +48,36 @@ class OIDeltas:
 
 	@detach
 	def removeD1(self, q):
-		time.sleep(d1)
+		time.sleep(S.d1)
 		with self.lock:
 			self.d1Delta -= q
 
 	@detach
 	def removeD2(self, q):
-		time.sleep(d2)
+		time.sleep(S.d2)
 		with self.lock:
 			self.d2Delta -= q
 
+	def repr(self, price=True, last=True, d1=True, d2=True, total=True, ticks=True, avg=True):
+		s = ""
+		if price:
+			s += coloredPrice(self.price) + "  "
+		if last:
+			s += "last: {}  ".format(coloredValue(self.last, S.interval))
+		if d1:
+			s += "{}s: {}  ".format(S.d1, coloredValue(self.d1Delta, S.d1))
+		if d2:
+			s += "{}s: {}  ".format(S.d2, coloredValue(self.d2Delta, S.d2))
+		if total:
+			s += "total: {}  ".format(coloredValue(self.totalDelta, S.d2 * 2))
+		if ticks:
+			s += "ticks: {:>4}  ".format(self.ticks)
+		if avg:
+			ticks = self.ticks if self.ticks > 0 else 1
+			s += "avg: {}  ".format(coloredValue(self.totalDelta / ticks, S.interval, threshold=S.threshold / 2))
+
 	def __repr__(self):
-		return "  {}   last: {}    {}s: {}    {}s: {}   tot: {}   avg: {}".format(
-			coloredPrice(self.price),
-			coloredValue(self.last, 5),
-			d1, coloredValue(self.d1Delta, d1),
-			d2, coloredValue(self.d2Delta, d2),
-			coloredValue(self.totalDelta, d2*2),
-			coloredValue(self.totalDelta/self.ticks if self.ticks > 0 else 1, 5, thr=threshold/2),
-		)
+		return self.repr()
 
 def priceRange(p, step=10):
 	return p - p % step
@@ -79,15 +92,15 @@ priceColors = [
 	Fore.LIGHTBLACK_EX,
 ]
 
-def coloredPrice(p, step=pRange):
+def coloredPrice(p, step=S.pRange):
 	return "{}{:>7,.0f}{}".format(priceColors[int((p / step) % len(priceColors))], p, Style.RESET_ALL)
 
-def coloredValue(v, duration, thr=threshold, padSize=12):
+def coloredValue(v, duration, threshold=S.threshold, padSize=12):
 	s = '{:>{pad},.0f}'.format(v, pad=padSize)
 	perSec = v / duration
-	if perSec > thr:
+	if perSec > threshold:
 		s = Fore.GREEN + s + Style.RESET_ALL
-	elif perSec < -thr:
+	elif perSec < -threshold:
 		s = Fore.RED + s + Style.RESET_ALL
 	return s
 
@@ -107,7 +120,7 @@ if __name__ == "__main__":
 
 	ti = exchange.fetch_ticker('BTC/USD')['info']
 	oi0 = ti['openInterest']
-	time.sleep(interval)
+	time.sleep(S.interval)
 
 	while True:
 		try:
@@ -123,4 +136,4 @@ if __name__ == "__main__":
 			pprint("{}        OI: {:>16,.0f}".format(oiDelta, oi))
 		except:
 			logging.exception("unhandled exception")
-		time.sleep(interval)
+		time.sleep(S.interval)
