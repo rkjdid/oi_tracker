@@ -1,4 +1,6 @@
 import logging
+import os
+import signal
 import time
 import datetime
 import ccxt
@@ -75,6 +77,7 @@ class OIDeltas:
 		if avg:
 			ticks = self.ticks if self.ticks > 0 else 1
 			s += "avg: {}  ".format(coloredValue(self.totalDelta / ticks, S.interval, threshold=S.threshold / 2))
+		return s.strip()
 
 	def __repr__(self):
 		return self.repr()
@@ -115,12 +118,20 @@ def pprint(msg, *mods):
 		Style.RESET_ALL,
 	))
 
+def bye(a, b):
+	print("bye")
+	os._exit(0)
+
 if __name__ == "__main__":
 	oiPerPrice = {}
 
 	ti = exchange.fetch_ticker('BTC/USD')['info']
 	oi0 = ti['openInterest']
 	time.sleep(S.interval)
+	p0 = priceRange(ti['midPrice'])
+
+	signal.signal(signal.SIGINT, bye)
+	signal.signal(signal.SIGTERM, bye)
 
 	while True:
 		try:
@@ -129,6 +140,9 @@ if __name__ == "__main__":
 			delta = oi - oi0
 			oi0 = oi
 			p = priceRange(ti['midPrice'])
+			if p != p0:
+				print()
+			p0 = p
 			if not p in oiPerPrice:
 				oiPerPrice[p] = OIDeltas(p)
 			oiDelta = oiPerPrice[p]
