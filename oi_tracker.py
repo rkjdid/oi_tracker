@@ -1,31 +1,48 @@
+import argparse
 import logging
 import os
 import signal
 import time
 import datetime
-import ccxt
 
 from colorama import Fore, Style
 from threading import Lock
+
+from exchange import newExchange
 from sync import detach
 from envparse import env
 
-env.read_envfile("env")
-exchange = ccxt.bitmex({
-    'apiKey': env("API_KEY"),
-    'secret': env("API_SEC"),
-    'enableRateLimit': True,
-})
+# parse environment
+if __name__ == "__main__":
+	import argparse
 
-markets = exchange.load_markets()
+	parser = argparse.ArgumentParser()
+	parser.add_argument("-e", "--env", type=str, default="env",
+						help="environment file, contains config, exchange, keys etc.")
+	args = parser.parse_args()
+	env.read_envfile(args.env)
 
-# global settings
+# prepare exchange configuration from env
+conf = {
+	'exchange': env("EXCHANGE"),
+	'market': env("MARKET", None),
+	'apiKey': env("API_KEY"),
+	'secret': env("API_SEC"),
+	'enableRateLimit': True,
+}
+if not conf["market"]:
+	del(conf["market"])
+
+# init ccxt exchange
+exchange = newExchange(conf)
+
+# main settings
 class S:
-	interval = 5.     # measure OI
-	threshold = 5000. # deltaOI/sec threshold before highlighting (red/green)
-	d1 = 30           # d1 period in secs
-	d2 = 150          # d2 period in secs
-	pRange = 10       # price range size
+	interval =  env('interval', 5.)      # measure OI
+	threshold = env('threshold', 5000.)  # deltaOI/sec threshold before highlighting (red/green)
+	d1 =        env('d1', 30)            # d1 period in secs
+	d2 =        env('d2', 150)           # d2 period in secs
+	pRange =    env('pRange', 10)        # price range size
 
 class OIDeltas:
 	d1Delta = 0
@@ -101,9 +118,9 @@ def coloredPrice(p, step=S.pRange):
 def coloredValue(v, duration, threshold=S.threshold, padSize=12):
 	s = '{:>{pad},.0f}'.format(v, pad=padSize)
 	perSec = v / duration
-	if perSec > threshold:
+	if perSec >= threshold:
 		s = Fore.GREEN + s + Style.RESET_ALL
-	elif perSec < -threshold:
+	elif perSec <= -threshold:
 		s = Fore.RED + s + Style.RESET_ALL
 	return s
 
@@ -123,23 +140,22 @@ def bye(a, b):
 	os._exit(0)
 
 if __name__ == "__main__":
-	oiPerPrice = {}
-
-	ti = exchange.fetch_ticker('BTC/USD')['info']
-	oi0 = ti['openInterest']
+	exchange.fetchTicker()
+	oi0 = exchange.getOI()
 	time.sleep(S.interval)
-	p0 = priceRange(ti['midPrice'])
+	p0 = priceRange(exchange.getPrice())
 
 	signal.signal(signal.SIGINT, bye)
 	signal.signal(signal.SIGTERM, bye)
 
+	oiPerPrice = {}
 	while True:
 		try:
-			ti = exchange.fetch_ticker('BTC/USD')['info']
-			oi = ti['openInterest']
+			exchange.fetchTicker()
+			oi = exchange.getOI()
 			delta = oi - oi0
 			oi0 = oi
-			p = priceRange(ti['midPrice'])
+			p = priceRange(exchange.getPrice())
 			if p != p0:
 				print()
 			p0 = p
