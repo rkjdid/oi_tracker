@@ -11,7 +11,7 @@ from sync import detach
 from envparse import env
 
 env.read_envfile("env")
-exchange = ccxt.bitmex({
+exchange = ccxt.deribit({
     'apiKey': env("API_KEY"),
     'secret': env("API_SEC"),
     'enableRateLimit': True,
@@ -22,7 +22,7 @@ markets = exchange.load_markets()
 # global settings
 class S:
 	interval = 5.     # measure OI
-	threshold = 5000. # deltaOI/sec threshold before highlighting (red/green)
+	threshold = 500. # deltaOI/sec threshold before highlighting (red/green)
 	d1 = 30           # d1 period in secs
 	d2 = 150          # d2 period in secs
 	pRange = 10       # price range size
@@ -125,8 +125,8 @@ def bye(a, b):
 if __name__ == "__main__":
 	oiPerPrice = {}
 
-	ti = exchange.fetch_ticker('BTC/USD')['info']
-	oi0 = ti['openInterest']
+	ti = exchange.fetch_ticker('BTC-PERPETUAL')['info']
+	oi0 = ti['openInterest']*10
 	time.sleep(S.interval)
 	p0 = priceRange(ti['midPrice'])
 
@@ -135,8 +135,8 @@ if __name__ == "__main__":
 
 	while True:
 		try:
-			ti = exchange.fetch_ticker('BTC/USD')['info']
-			oi = ti['openInterest']
+			ti = exchange.fetch_ticker('BTC-PERPETUAL')['info']
+			oi = ti['openInterest']*10
 			delta = oi - oi0
 			oi0 = oi
 			p = priceRange(ti['midPrice'])
