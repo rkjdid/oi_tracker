@@ -126,7 +126,7 @@ if __name__ == "__main__":
 	oiPerPrice = {}
 
 	ti = exchange.fetch_ticker('BTC-PERPETUAL')['info']
-	oi0 = ti['openInterest']*10
+	oi0 = ti['open_interest']*10
 	time.sleep(S.interval)
 	p0 = priceRange(ti['midPrice'])
 
@@ -136,7 +136,7 @@ if __name__ == "__main__":
 	while True:
 		try:
 			ti = exchange.fetch_ticker('BTC-PERPETUAL')['info']
-			oi = ti['openInterest']*10
+			oi = ti['open_interest']*10
 			delta = oi - oi0
 			oi0 = oi
 			p = priceRange(ti['midPrice'])
