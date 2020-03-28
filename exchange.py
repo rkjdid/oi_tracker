@@ -46,7 +46,7 @@ class Deribit(Exchange):
         Exchange.__init__(self, conf, ccxt.deribit, market=conf.get("market", "BTC-PERPETUAL"))
 
     def getOI(self):
-        return self.ticker["info"]["open_interest"]*10
+        return self.ticker["info"]["open_interest"]
 
     def getPrice(self):
         return (self.ticker["info"]["best_ask_price"] + self.ticker["info"]["best_bid_price"]) / 2
