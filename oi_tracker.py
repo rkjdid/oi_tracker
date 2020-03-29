@@ -20,7 +20,10 @@ if __name__ == "__main__":
 	parser.add_argument("-e", "--env", type=str, default="env",
 						help="environment file, contains config, exchange, keys etc.")
 	args = parser.parse_args()
-	env.read_envfile(args.env)
+	if not os.path.isfile(args.env):
+		print("no environment file" % args.env)
+	else:
+		env.read_envfile(args.env)
 
 # prepare exchange configuration from env
 conf = {
