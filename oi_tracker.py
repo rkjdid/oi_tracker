@@ -48,11 +48,12 @@ exchange = newExchange(conf)
 
 # main settings
 class S:
-	interval =  env('interval', 5.)      # measure OI
-	threshold = env('threshold', 5000.)  # deltaOI/sec threshold before highlighting (red/green)
-	d1 =        env('d1', 30)            # d1 period in secs
-	d2 =        env('d2', 150)           # d2 period in secs
-	pRange =    env('pRange', 10)        # price range size
+	interval =     float(env('interval', 5.))        # ticker interval
+	threshold =    float(env('threshold', 5000.))    # deltaOI/sec threshold before highlighting (red/green)
+	d1 =           float(env('d1', 30))              # d1 period in secs
+	d2 =           float(env('d2', 150))             # d2 period in secs
+	pRange =       float(env('pRange', 10))          # price range size
+	summaryTicks = float(env('summaryTicks', 180.))  # display summary every number of ticks (so 180*5s == every 15minutee)
 
 class OIDeltas:
 	d1Delta = 0
@@ -98,7 +99,7 @@ class OIDeltas:
 		if d2:
 			s += "{}s: {}  ".format(S.d2, coloredValue(self.d2Delta, S.d2))
 		if total:
-			s += "total: {}  ".format(coloredValue(self.totalDelta, S.d2 * 2))
+			s += "total: {}  ".format(coloredValue(self.totalDelta, self.ticks*S.interval))
 		if ticks:
 			s += "ticks: {:>4}  ".format(self.ticks)
 		if avg:
@@ -129,8 +130,8 @@ def coloredPrice(p, step=S.pRange):
 	else:
 		return "{}{}{}".format(priceColors[int((p / step) % len(priceColors))], s, Style.RESET_ALL)
 
-def coloredValue(v, duration, threshold=S.threshold, padSize=12):
-	s = '{:>{pad},.0f}'.format(v, pad=padSize)
+def coloredValue(v, duration, threshold=S.threshold, padSize=12, decimals=0):
+	s = '{:>{pad},.{decimals}f}'.format(v, pad=padSize, decimals=decimals)
 	if args.nocolor:
 		return s
 	perSec = v / duration
@@ -159,27 +160,57 @@ if __name__ == "__main__":
 	exchange.fetchTicker()
 	oi0 = exchange.getOI()
 	time.sleep(S.interval)
-	p0 = priceRange(exchange.getPrice())
+	pRef = exchange.getPrice()
+	p0 = priceRange(pRef)
+	pmin = pRef
+	pmax = pRef
 
 	signal.signal(signal.SIGINT, bye)
 	signal.signal(signal.SIGTERM, bye)
 
-	oiPerPrice = {}
+	total = {}
+	session = {}
+	i = 0
 	while True:
 		try:
 			exchange.fetchTicker()
 			oi = exchange.getOI()
 			delta = oi - oi0
 			oi0 = oi
-			p = priceRange(exchange.getPrice())
-			if p != p0:
-				print()
+			pReal = exchange.getPrice()
+			pmin = min(pmin, pReal)
+			pmax = max(pmax, pReal)
+			p = priceRange(pReal)
+			# if p != p0:
+			# 	print()
 			p0 = p
-			if not p in oiPerPrice:
-				oiPerPrice[p] = OIDeltas(p)
-			oiDelta = oiPerPrice[p]
-			oiDelta.add(delta)
-			pprint("{}        OI: {:>16,.0f}".format(oiDelta, oi))
+			if not p in total:
+				total[p] = OIDeltas(p)
+			if not p in session:
+				session[p] = OIDeltas(p)
+			oidTotal = total[p]
+			oidSession = session[p]
+			oidTotal.add(delta)
+			oidSession.add(delta)
+			pprint("{}        OI: {:>16,.0f}".format(oidTotal, oi))
+			i+=1
+			if i % S.summaryTicks == 0:
+				print()
+				pprint("summary %d min:" % ((S.interval * S.summaryTicks) / 60))
+				totalDelta = 0
+				for p, oid in sorted(session.items()):
+					print("  {}".format(oid.repr(last=False, d1=False, d2=False)))
+					totalDelta += oid.totalDelta
+				print("\n    ticker: {} ({})  min: {:.1f}  max: {:.1f}  spread: {}  oi: {}\n".format(
+					pReal,
+					coloredValue(pReal-pRef, 1, threshold=50, padSize=4, decimals=1),
+					pmin,
+					pmax,
+					coloredValue(pmax-pmin, 1, threshold=100, padSize=4, decimals=1),
+					coloredValue(totalDelta, S.interval * S.summaryTicks),
+				))
+				session = {}
+				pRef, pmax, pmin = pReal, pReal, pReal
 		except:
 			logging.exception("unhandled exception")
 		time.sleep(S.interval)
