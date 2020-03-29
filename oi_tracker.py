@@ -198,12 +198,12 @@ if __name__ == "__main__":
 				print()
 				pprint("summary %d min:" % ((S.interval * S.summaryTicks) / 60))
 				totalDelta = 0
-				for p, oid in sorted(session.items()):
+				for p, oid in sorted(session.items(), reverse=True):
 					print("  {}".format(oid.repr(last=False, d1=False, d2=False)))
 					totalDelta += oid.totalDelta
-				print("\n    ticker: {} ({})  min: {:.1f}  max: {:.1f}  spread: {}  oi: {}\n".format(
+				print("\n    ticker: {} ({:+.1f})  min: {:.1f}  max: {:.1f}  spread: {}  oi: {}\n".format(
 					pReal,
-					coloredValue(pReal-pRef, 1, threshold=50, padSize=4, decimals=1),
+					float(coloredValue(pReal-pRef, 1, threshold=50, padSize=4, decimals=1)),
 					pmin,
 					pmax,
 					coloredValue(pmax-pmin, 1, threshold=100, padSize=4, decimals=1),
