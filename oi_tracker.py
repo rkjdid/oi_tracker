@@ -1,7 +1,7 @@
-import argparse
 import logging
 import os
 import signal
+import sys
 import time
 import datetime
 
@@ -9,8 +9,8 @@ from colorama import Fore, Style
 from threading import Lock
 
 from exchange import newExchange
-from sync import detach
-from envparse import env
+from util import detach, unbuffered
+from envparse import env, ConfigurationError
 
 # parse environment
 if __name__ == "__main__":
@@ -19,22 +19,29 @@ if __name__ == "__main__":
 	parser = argparse.ArgumentParser()
 	parser.add_argument("-e", "--env", type=str, default="env",
 						help="environment file, contains config, exchange, keys etc.")
+	parser.add_argument("-nc", "--nocolor", action='store_true', default=False, help="disable colored tty")
 	args = parser.parse_args()
 	if not os.path.isfile(args.env):
-		print("no environment file" % args.env)
+		print("no environment file (looking for \"%s\")" % args.env)
 	else:
 		env.read_envfile(args.env)
+	if not sys.stdout.isatty():
+		sys.stdout = unbuffered(sys.stdout)
 
-# prepare exchange configuration from env
-conf = {
-	'exchange': env("EXCHANGE"),
-	'market': env("MARKET", None),
-	'apiKey': env("API_KEY"),
-	'secret': env("API_SEC"),
-	'enableRateLimit': True,
-}
-if not conf["market"]:
-	del(conf["market"])
+try:
+	# prepare exchange configuration from env
+	conf = {
+		'exchange': env("EXCHANGE"),
+		'market': env("MARKET", None),
+		'apiKey': env("API_KEY"),
+		'secret': env("API_SEC"),
+		'enableRateLimit': True,
+	}
+	if not conf["market"]:
+		del(conf["market"])
+except ConfigurationError as err:
+	print(err)
+	exit(1)
 
 # init ccxt exchange
 exchange = newExchange(conf)
@@ -116,10 +123,16 @@ priceColors = [
 ]
 
 def coloredPrice(p, step=S.pRange):
-	return "{}{:>7,.0f}{}".format(priceColors[int((p / step) % len(priceColors))], p, Style.RESET_ALL)
+	s = "{:>7,.0f}".format(p)
+	if args.nocolor:
+		return s
+	else:
+		return "{}{}{}".format(priceColors[int((p / step) % len(priceColors))], s, Style.RESET_ALL)
 
 def coloredValue(v, duration, threshold=S.threshold, padSize=12):
 	s = '{:>{pad},.0f}'.format(v, pad=padSize)
+	if args.nocolor:
+		return s
 	perSec = v / duration
 	if perSec >= threshold:
 		s = Fore.GREEN + s + Style.RESET_ALL
