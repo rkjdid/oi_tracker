@@ -153,10 +153,13 @@ def pprint(msg, *mods):
 	))
 
 def bye(a, b):
-	print("bye")
+	print("\nbye")
 	os._exit(0)
 
 if __name__ == "__main__":
+	signal.signal(signal.SIGINT, bye)
+	signal.signal(signal.SIGTERM, bye)
+
 	exchange.fetchTicker()
 	oi0 = exchange.getOI()
 	time.sleep(S.interval)
