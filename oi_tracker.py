@@ -53,7 +53,7 @@ class S:
 	d1 =           float(env('d1', 30))              # d1 period in secs
 	d2 =           float(env('d2', 150))             # d2 period in secs
 	pRange =       float(env('pRange', 10))          # price range size
-	summaryTicks = float(env('summaryTicks', 180.))  # display summary every number of ticks (so 180*5s == every 15minutee)
+	profileFreq =  float(env('profileTicks', 180.))  # display oi profile every number of ticks (so 180*5s == every 15minutee)
 
 class OIDeltas:
 	d1Delta = 0
@@ -197,20 +197,20 @@ if __name__ == "__main__":
 			oidSession.add(delta)
 			pprint("{}        OI: {:>16,.0f}".format(oidTotal, oi))
 			i+=1
-			if i % S.summaryTicks == 0:
+			if i % S.profileFreq == 0:
 				print()
-				pprint("summary %d min:" % ((S.interval * S.summaryTicks) / 60))
+				pprint("%d min profile:" % ((S.interval * S.profileFreq) / 60))
 				totalDelta = 0
 				for p, oid in sorted(session.items(), reverse=True):
 					print("  {}".format(oid.repr(last=False, d1=False, d2=False)))
 					totalDelta += oid.totalDelta
-				print("\n    ticker: {} ({:+.1f})  min: {:.1f}  max: {:.1f}  spread: {}  oi: {}\n".format(
+				print("\n    ticker: {} ({:+.1f})  min/max: {:.1f}/{:.1f} ({})  oi: {}\n".format(
 					pReal,
 					float(coloredValue(pReal-pRef, 1, threshold=50, padSize=4, decimals=1)),
 					pmin,
 					pmax,
 					coloredValue(pmax-pmin, 1, threshold=100, padSize=4, decimals=1),
-					coloredValue(totalDelta, S.interval * S.summaryTicks),
+					coloredValue(totalDelta, S.interval * S.profileFreq),
 				))
 				session = {}
 				pRef, pmax, pmin = pReal, pReal, pReal
