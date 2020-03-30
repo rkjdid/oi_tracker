@@ -33,9 +33,11 @@ try:
 	conf = {
 		'exchange': env("EXCHANGE"),
 		'market': env("MARKET", None),
-		'apiKey': env("API_KEY"),
-		'secret': env("API_SEC"),
-		'enableRateLimit': True,
+		'ccxt': {
+			'apiKey': env("API_KEY"),
+			'secret': env("API_SEC"),
+			'enableRateLimit': True,
+		},
 	}
 	if not conf["market"]:
 		del(conf["market"])

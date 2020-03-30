@@ -14,7 +14,7 @@ class Exchange:
 
     def __init__(self, conf, ccxt_ex_class, market="BTC/USD"):
         self.conf = conf
-        self.ccxt = ccxt_ex_class(self.conf)
+        self.ccxt = ccxt_ex_class(self.conf['ccxt'])
         self.markets = self.ccxt.load_markets()
         self.market = market
         self.ticker = None
