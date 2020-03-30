@@ -160,6 +160,8 @@ if __name__ == "__main__":
 	signal.signal(signal.SIGINT, bye)
 	signal.signal(signal.SIGTERM, bye)
 
+	pprint("tracking OI levels for {}/{}".format(exchange.name, exchange.market))
+
 	exchange.fetchTicker()
 	oi0 = exchange.getOI()
 	time.sleep(S.interval)
@@ -199,7 +201,11 @@ if __name__ == "__main__":
 			i+=1
 			if i % S.profileFreq == 0:
 				print()
-				pprint("%d min profile:" % ((S.interval * S.profileFreq) / 60))
+				pprint("%d min profile for %s/%s:" % (
+					((S.interval * S.profileFreq) / 60),
+					exchange.name,
+					exchange.market)
+				)
 				totalDelta = 0
 				for p, oid in sorted(session.items(), reverse=True):
 					print("  {}".format(oid.repr(last=False, d1=False, d2=False)))
