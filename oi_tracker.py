@@ -175,6 +175,7 @@ if __name__ == "__main__":
 	p0 = priceRange(pRef)
 	pmin = pRef
 	pmax = pRef
+	oiSubTotal = 0
 
 	# main data dicts mapping a price range with an OIDelta
 	total = {}    # stores OIDeltas for the whole program runtime
@@ -187,6 +188,7 @@ if __name__ == "__main__":
 			oi = exchange.getOI()
 			delta = oi - oi0
 			oi0 = oi
+			oiSubTotal += delta
 
 			# get ticker price, store min/max for session, and calculate price range p
 			pReal = exchange.getPrice()
@@ -214,6 +216,15 @@ if __name__ == "__main__":
 
 			# increment main tick
 			i+=1
+
+			# triggered every 60*S.interval seconds (5 minutes)
+			if i % 60:
+				print()
+				pprint("oiSubTotal for last 5 minutes: {}\n".format(
+					coloredValue(oiSubTotal, threshold=1500000)
+				))
+				# reset oiSubTotal
+				oiSubTotal = 0
 
 			# check if current profile session is elapsed or not
 			if i % S.profileTicks == 0:
