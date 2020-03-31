@@ -173,8 +173,8 @@ def coloredPrice(p, step=S.pRange):
 		return "{}{}{}".format(priceColors[int((p / step) % len(priceColors))], s, Style.RESET_ALL)
 
 
-def coloredValue(v, duration=1, threshold=S.threshold, padSize=12, decimals=0):
-	s = '{:>{pad},.{decimals}f}'.format(v, pad=padSize, decimals=decimals)
+def coloredValue(v, duration=1, threshold=500, padSize=12, decimals=0, plus=False):
+	s = '{:{prefix}{pad},.{decimals}f}'.format(v, prefix="+" if plus else ">", pad=padSize, decimals=decimals)
 	if args.nocolor:
 		return s
 	perSec = v / duration
@@ -267,7 +267,7 @@ if __name__ == "__main__":
 					# pprint("cooling down: %.0f\n" % oiAlerts.d1Delta)
 				else:
 					oiCooldown.start()
-					msg = "%s:%s drunk emirati: %.0f in last %.0f minutes. Ticker: %.1f" % (
+					msg = "{}:{} drunk emirati: {:+.0f} in last {:.0f} minutes. Ticker: {:.1f}".format(
 						conf["exchange"],
 						conf["market"],
 						oiAlerts.d1Delta,
@@ -297,9 +297,9 @@ if __name__ == "__main__":
 				for p, oid in sorted(session.items(), reverse=True):
 					print("  {}".format(oid.repr(last=False, d1=False, d2=False)))
 					totalDelta += oid.totalDelta
-				print("\n    ticker: {} ({})  min/max: {:.1f}/{:.1f} ({})  oi: {}\n".format(
+				print("\n    ticker: {} ({})  min/max: {:.1f}/{:.1f} (<> {})  oi: {}\n".format(
 					pReal,
-					coloredValue(pReal-pRef, 1, threshold=50, padSize=4, decimals=1),
+					coloredValue(pReal-pRef, 1, threshold=50, padSize=4, decimals=1, plus=True),
 					pmin,
 					pmax,
 					coloredValue(pmax-pmin, 1, threshold=100, padSize=4, decimals=1),
