@@ -236,6 +236,7 @@ if __name__ == "__main__":
 					coloredValue(pmax-pmin, 1, threshold=100, padSize=4, decimals=1),
 					coloredValue(totalDelta, S.interval * S.profileTicks),
 				))
+				# reset current profile summary session
 				session = {}
 				pRef, pmax, pmin = pReal, pReal, pReal
 		except:
