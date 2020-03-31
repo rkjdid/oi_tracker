@@ -1,4 +1,4 @@
-from threading import Thread
+from threading import Thread, Event, Lock
 from functools import wraps
 
 def detach(target):
@@ -26,3 +26,26 @@ class unbuffered(object):
 
     def __getattr__(self, attr):
         return getattr(self.stream, attr)
+
+class timer:
+    def __init__(self, duration):
+        self.duration = duration
+        self.running = False
+        self.cancel = Event()
+        self.lock = Lock()
+
+    def start(self):
+        with self.lock:
+            if self.running:
+                self.cancel.set()
+            self.running = True
+        self.cooldown()
+
+    @detach
+    def cooldown(self):
+        self.cancel.wait(self.duration)
+        with self.lock:
+            if self.cancel.is_set():
+                self.cancel.clear()
+                return
+            self.running = False

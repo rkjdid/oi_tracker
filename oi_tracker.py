@@ -1,15 +1,17 @@
 import logging
+import math
 import os
 import signal
 import sys
 import time
 import datetime
+import requests
 
 from colorama import Fore, Style
 from threading import Lock
 
 from exchange import newExchange
-from util import detach, unbuffered
+from util import detach, unbuffered, timer
 from envparse import env, ConfigurationError
 
 # parse environment
@@ -28,9 +30,28 @@ if __name__ == "__main__":
 	if not sys.stdout.isatty():
 		sys.stdout = unbuffered(sys.stdout)
 
+# settings
+class S:
+	interval        = float(env('interval', 5.))         # ticker interval
+	threshold       = float(env('threshold', 5000.))     # deltaOI/sec threshold before highlighting (red/green)
+	d1              = float(env('d1', 30))               # d1 period in secs
+	d2              = float(env('d2', 150))              # d2 period in secs
+	pRange          = float(env('pRange', 10))           # price range size
+	profileTicks    = float(env('profileTicks', 180.))   # display oi profile every number of ticks (so 180*5s == every 15minutee)
+
+	# telegram alert settings
+	alertInterval   = float(env('alertInterval', 300))   # lookback last alertInterval seconds for telegram notification
+	alertThreshold  = float(env('alertThreshold', 5e6))  # absolute OI-delta value above which a notification should be sent
+	alertCooldown   = float(env('alertCooldown', 60))    # alert cooldown in seconds
+
+# exchange and other meta-config
 try:
-	# prepare exchange configuration from env
 	conf = {
+		'telegram': {
+			'disabled': bool(env('TELEGRAM_DISABLED', False)),
+			'bot': env("TELEGRAM_TOKEN", ""),
+			'chat': env("TELEGRAM_CHAT", ""),
+		},
 		'exchange': env("EXCHANGE"),
 		'market': env("MARKET", None),
 		'ccxt': {
@@ -45,22 +66,38 @@ except ConfigurationError as err:
 	print(err)
 	exit(1)
 
+# setup telegram
+telegramPrefix = \
+	"https://api.telegram.org/bot{token}/{{method}}?chat_id={chatID}".format(
+		token=conf["telegram"]["bot"],
+		chatID=conf["telegram"]["chat"],
+	)
+telegramMsgFormat = telegramPrefix.format(method="sendMessage") + "&parse_mode=Markdown&text={}"
+telegramGetMyCmds = telegramPrefix.format(method="getMyCommands")
+if not conf["telegram"]["disabled"]:
+	# check that telegram is working
+	try:
+		resp = requests.get(telegramGetMyCmds)
+		respJson = resp.json()
+		if not "ok" in respJson or not respJson["ok"]:
+			raise Exception(repr(respJson))
+	except Exception as err:
+		print("couldn't init telegram: %s" % err)
+		print("disabling telegram alert")
+		conf["telegram"]["disabled"] = True
+
 # init ccxt exchange
 exchange = newExchange(conf)
-
-# main settings
-class S:
-	interval =     float(env('interval', 5.))        # ticker interval
-	threshold =    float(env('threshold', 5000.))    # deltaOI/sec threshold before highlighting (red/green)
-	d1 =           float(env('d1', 30))              # d1 period in secs
-	d2 =           float(env('d2', 150))             # d2 period in secs
-	pRange =       float(env('pRange', 10))          # price range size
-	profileTicks = float(env('profileTicks', 180.))  # display oi profile every number of ticks (so 180*5s == every 15minutee)
+conf["market"] = exchange.market
 
 # OIDeltas tracks OI evolution between each data, on several configurable timeframes (d1, d2 and total/lifetime)
 class OIDeltas:
+	d1 = S.d1
 	d1Delta = 0
+
+	d2 = S.d2
 	d2Delta = 0
+
 	totalDelta = 0
 	lock = Lock()
 	last = 0
@@ -81,13 +118,13 @@ class OIDeltas:
 
 	@detach
 	def removeD1(self, q):
-		time.sleep(S.d1)
+		time.sleep(self.d1)
 		with self.lock:
 			self.d1Delta -= q
 
 	@detach
 	def removeD2(self, q):
-		time.sleep(S.d2)
+		time.sleep(self.d2)
 		with self.lock:
 			self.d2Delta -= q
 
@@ -176,6 +213,12 @@ if __name__ == "__main__":
 	pmin = pRef
 	pmax = pRef
 
+	# will track global delta on custom duration (S.alertInterval)
+	oiAlerts = OIDeltas(0)
+	oiAlerts.d1 = S.alertInterval
+	oiAlerts.d2 = 0 # d2 interval not used for now for alerts
+	oiCooldown = timer(S.alertCooldown)
+
 	# main data dicts mapping a price range with an OIDelta
 	total = {}    # stores OIDeltas for the whole program runtime
 	session = {}  # partial OIDeltas, works in the same way as total, but is reset every profileTicks
@@ -209,11 +252,37 @@ if __name__ == "__main__":
 			# add current delta
 			oidTotal.add(delta)
 			oidSession.add(delta)
+			oiAlerts.add(delta)
 			# print current level
 			pprint("{}        OI: {:>16,.0f}".format(oidTotal, oi))
 
 			# increment main tick
 			i+=1
+
+			# check if we reached alert threshold
+			if math.fabs(oiAlerts.d1Delta) >= S.alertThreshold:
+				if oiCooldown.running:
+					pass
+					# print()
+					# pprint("cooling down: %.0f\n" % oiAlerts.d1Delta)
+				else:
+					oiCooldown.start()
+					msg = "%s:%s drunk emirati: %.0f in last %.0f minutes. Ticker: %.1f" % (
+						conf["exchange"],
+						conf["market"],
+						oiAlerts.d1Delta,
+						(S.alertInterval / 60),
+						pReal
+					)
+					print()
+					pprint(msg + "\n")
+					if not conf["telegram"]["disabled"]:
+						try:
+							resp = requests.get(telegramMsgFormat.format(msg))
+							if not resp.json()["ok"]:
+								raise Exception(repr(resp.json()))
+						except Exception as err:
+							pprint("telegram api call error: %s" % err)
 
 			# check if current profile session is elapsed or not
 			if i % S.profileTicks == 0:
