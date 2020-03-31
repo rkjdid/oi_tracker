@@ -136,7 +136,7 @@ def coloredPrice(p, step=S.pRange):
 		return "{}{}{}".format(priceColors[int((p / step) % len(priceColors))], s, Style.RESET_ALL)
 
 
-def coloredValue(v, duration, threshold=S.threshold, padSize=12, decimals=0):
+def coloredValue(v, duration=1, threshold=S.threshold, padSize=12, decimals=0):
 	s = '{:>{pad},.{decimals}f}'.format(v, pad=padSize, decimals=decimals)
 	if args.nocolor:
 		return s
