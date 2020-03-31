@@ -55,8 +55,9 @@ class S:
 	d1 =           float(env('d1', 30))              # d1 period in secs
 	d2 =           float(env('d2', 150))             # d2 period in secs
 	pRange =       float(env('pRange', 10))          # price range size
-	profileFreq =  float(env('profileTicks', 180.))  # display oi profile every number of ticks (so 180*5s == every 15minutee)
+	profileTicks = float(env('profileTicks', 180.))  # display oi profile every number of ticks (so 180*5s == every 15minutee)
 
+# OIDeltas tracks OI evolution between each data, on several configurable timeframes (d1, d2 and total/lifetime)
 class OIDeltas:
 	d1Delta = 0
 	d2Delta = 0
@@ -90,6 +91,7 @@ class OIDeltas:
 		with self.lock:
 			self.d2Delta -= q
 
+	# how to display data
 	def repr(self, price=True, last=True, d1=True, d2=True, total=True, ticks=True, avg=True):
 		s = ""
 		if price:
@@ -125,12 +127,14 @@ priceColors = [
 	Fore.LIGHTBLACK_EX,
 ]
 
+# used to color price with above colors to differentiate between price levels
 def coloredPrice(p, step=S.pRange):
 	s = "{:>7,.0f}".format(p)
 	if args.nocolor:
 		return s
 	else:
 		return "{}{}{}".format(priceColors[int((p / step) % len(priceColors))], s, Style.RESET_ALL)
+
 
 def coloredValue(v, duration, threshold=S.threshold, padSize=12, decimals=0):
 	s = '{:>{pad},.{decimals}f}'.format(v, pad=padSize, decimals=decimals)
@@ -172,18 +176,19 @@ if __name__ == "__main__":
 	pmin = pRef
 	pmax = pRef
 
-	signal.signal(signal.SIGINT, bye)
-	signal.signal(signal.SIGTERM, bye)
-
-	total = {}
-	session = {}
+	# main data dicts mapping a price range with an OIDelta
+	total = {}    # stores OIDeltas for the whole program runtime
+	session = {}  # partial OIDeltas, works in the same way as total, but is reset every profileTicks
 	i = 0
 	while True:
 		try:
+			# fetch ticker data & calculate delta oi (oi - previousOI)
 			exchange.fetchTicker()
 			oi = exchange.getOI()
 			delta = oi - oi0
 			oi0 = oi
+
+			# get ticker price, store min/max for session, and calculate price range p
 			pReal = exchange.getPrice()
 			pmin = min(pmin, pReal)
 			pmax = max(pmax, pReal)
@@ -191,22 +196,33 @@ if __name__ == "__main__":
 			# if p != p0:
 			# 	print()
 			p0 = p
+
+			# check that OIDelta exists for current price range in our data dicts, if not create them
 			if not p in total:
 				total[p] = OIDeltas(p)
 			if not p in session:
 				session[p] = OIDeltas(p)
+
+			# retreive OIDeltas object for the current price range, for both dicts
 			oidTotal = total[p]
 			oidSession = session[p]
+			# add current delta
 			oidTotal.add(delta)
 			oidSession.add(delta)
+			# print current level
 			pprint("{}        OI: {:>16,.0f}".format(oidTotal, oi))
+
+			# increment main tick
 			i+=1
-			if i % S.profileFreq == 0:
+
+			# check if current profile session is elapsed or not
+			if i % S.profileTicks == 0:
+				# current session is elapsed, S.profileTicks reached, so we print profile summary
 				print()
 				pprint("profile for %s:%s, last %d minutes:" % (
 					exchange.name,
 					exchange.market,
-					(S.interval * S.profileFreq) / 60,
+					(S.interval * S.profileTicks) / 60,
 				))
 				totalDelta = 0
 				for p, oid in sorted(session.items(), reverse=True):
@@ -218,7 +234,7 @@ if __name__ == "__main__":
 					pmin,
 					pmax,
 					coloredValue(pmax-pmin, 1, threshold=100, padSize=4, decimals=1),
-					coloredValue(totalDelta, S.interval * S.profileFreq),
+					coloredValue(totalDelta, S.interval * S.profileTicks),
 				))
 				session = {}
 				pRef, pmax, pmin = pReal, pReal, pReal
