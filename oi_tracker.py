@@ -11,7 +11,7 @@ from colorama import Fore, Style
 from threading import Lock
 
 from exchange import newExchange
-from util import detach, unbuffered, timer
+from util import detach, unbuffered, timer, dispatchTimer
 from envparse import env, ConfigurationError
 
 # parse environment
@@ -103,28 +103,27 @@ class OIDeltas:
     last = 0
     ticks = 0
 
-    def __init__(self, p):
+    def __init__(self, p, dispatcher: dispatchTimer):
         self.price = p
+        self.dispatcher = dispatcher
 
     def add(self, delta):
         self.last = delta
         self.ticks += 1
         with self.lock:
-            self.d1Delta += delta
-            self.removeD1(delta)
-            self.d2Delta += delta
-            self.removeD2(delta)
+            if self.d1 > 0:
+                self.d1Delta += delta
+                self.dispatcher.add(self.d1, self.removeD1, delta)
+            if self.d2 > 0:
+                self.d2Delta += delta
+                self.dispatcher.add(self.d2, self.removeD2, delta)
             self.totalDelta += delta
 
-    @detach
     def removeD1(self, q):
-        time.sleep(self.d1)
         with self.lock:
             self.d1Delta -= q
 
-    @detach
     def removeD2(self, q):
-        time.sleep(self.d2)
         with self.lock:
             self.d2Delta -= q
 
@@ -202,6 +201,8 @@ def bye(a, b):
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, bye)
     signal.signal(signal.SIGTERM, bye)
+    dispatcher = dispatchTimer(S.interval)
+    dispatcher.start()
 
     pprint("tracking OI levels for {}:{}".format(exchange.name, exchange.market))
 
@@ -214,7 +215,7 @@ if __name__ == "__main__":
     pmax = pRef
 
     # will track global delta on custom duration (S.alertInterval)
-    oiAlerts = OIDeltas(0)
+    oiAlerts = OIDeltas(0, dispatcher)
     oiAlerts.d1 = S.alertInterval
     oiAlerts.d2 = 0 # d2 interval not used for now for alerts
     oiCooldown = timer(S.alertCooldown)
@@ -242,9 +243,9 @@ if __name__ == "__main__":
 
             # check that OIDelta exists for current price range in our data dicts, if not create them
             if not p in total:
-                total[p] = OIDeltas(p)
+                total[p] = OIDeltas(p, dispatcher)
             if not p in session:
-                session[p] = OIDeltas(p)
+                session[p] = OIDeltas(p, dispatcher)
 
             # retreive OIDeltas object for the current price range, for both dicts
             oidTotal = total[p]

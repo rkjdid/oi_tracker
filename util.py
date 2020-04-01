@@ -1,3 +1,5 @@
+import logging
+import time
 from threading import Thread, Event, Lock
 from functools import wraps
 
@@ -49,3 +51,44 @@ class timer:
                 self.cancel.clear()
                 return
             self.running = False
+
+class dispatchTimer(Thread):
+    id = 0
+    lock = Lock()
+    callbacks = {}
+    interval = 5
+
+    class delayedCallback:
+        def __init__(self, deadline, handler, *args):
+            self.deadline = deadline
+            self.handler = handler
+            self.args = args
+
+    def __init__(self, interval=5):
+        self.interval = interval
+        Thread.__init__(self)
+
+    def add(self, delay, handler, *args):
+        with self.lock:
+            self.id += 1
+            self.callbacks[self.id] =\
+                dispatchTimer.delayedCallback(
+                    time.time() + delay, handler, *args)
+
+    def run(self):
+        while True:
+            try:
+                self.tick()
+            except:
+                logging.exception("dispatchTimer unhandled exception")
+
+    def tick(self):
+        time.sleep(self.interval)
+        toClear = []
+        with self.lock:
+            for i, cb in self.callbacks.items():
+                if time.time() > cb.deadline:
+                    cb.handler(*cb.args)
+                    toClear.append(i)
+            for i in toClear:
+                del (self.callbacks[i])
