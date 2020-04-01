@@ -11,7 +11,7 @@ from colorama import Fore, Style
 from threading import Lock
 
 from exchange import newExchange
-from util import detach, unbuffered, timer, dispatchTimer
+from util import unbuffered, dispatchTimer
 from envparse import env, ConfigurationError
 
 # parse environment
@@ -212,13 +212,13 @@ if __name__ == "__main__":
     pRef = exchange.getPrice()
     p0 = priceRange(pRef)
     pmin = pRef
+    pmin1 = pRef
     pmax = pRef
+    pmax1 = pRef
 
     # will track global delta on custom duration (S.alertInterval)
-    oiAlerts = OIDeltas(0, dispatcher)
-    oiAlerts.d1 = S.alertInterval
-    oiAlerts.d2 = 0 # d2 interval not used for now for alerts
-    oiCooldown = timer(S.alertCooldown)
+    alertT0 = time.time()
+    alertDelta = 0
 
     # main data dicts mapping a price range with an OIDelta
     total = {}    # stores OIDeltas for the whole program runtime
@@ -235,7 +235,9 @@ if __name__ == "__main__":
             # get ticker price, store min/max for session, and calculate price range p
             pReal = exchange.getPrice()
             pmin = min(pmin, pReal)
+            pmin1 = min(pmin1, pReal)
             pmax = max(pmax, pReal)
+            pmax1 = max(pmax1, pReal)
             p = priceRange(pReal)
             # if p != p0:
             #     print()
@@ -253,7 +255,7 @@ if __name__ == "__main__":
             # add current delta
             oidTotal.add(delta)
             oidSession.add(delta)
-            oiAlerts.add(delta)
+            alertDelta += delta
             # print current level
             pprint("{}        OI: {:>16,.0f}".format(oidTotal, oi))
 
@@ -261,22 +263,20 @@ if __name__ == "__main__":
             i+=1
 
             # check if we reached alert threshold
-            if math.fabs(oiAlerts.d1Delta) >= S.alertThreshold:
-                if oiCooldown.running:
-                    pass
-                    # print()
-                    # pprint("cooling down: %.0f\n" % oiAlerts.d1Delta)
-                else:
-                    oiCooldown.start()
-                    msg = "{}:{} drunk emirati: {:+.0f} in last {:.0f} minutes. Ticker: {:.1f}".format(
-                        conf["exchange"],
-                        conf["market"],
-                        oiAlerts.d1Delta,
-                        (S.alertInterval / 60),
-                        pReal
-                    )
-                    print()
-                    pprint(msg + "\n")
+            if math.fabs(alertDelta) >= S.alertThreshold:
+                alertsDuration = time.time() - alertT0
+                msg = "{}:{} {:+,.0f} in {:.0f}s. Ticker: {:.1f}. Max/Min: {:.1f}/{:.1f} ({:.1f})".format(
+                    conf["exchange"],
+                    conf["market"],
+                    alertDelta,
+                    alertsDuration,
+                    pReal,
+                    pmax, pmin,
+                    pmax - pmin,
+                )
+                print()
+                pprint(msg + "\n")
+                if alertsDuration <= S.alertInterval:
                     if not conf["telegram"]["disabled"]:
                         try:
                             resp = requests.get(telegramMsgFormat.format(msg))
@@ -284,6 +284,10 @@ if __name__ == "__main__":
                                 raise Exception(repr(resp.json()))
                         except Exception as err:
                             pprint("telegram api call error: %s" % err)
+                # reset alert data
+                alertDelta = 0
+                alertT0 = time.time()
+                pRef, pmax, pmin = pReal, pReal, pReal
 
             # check if current profile session is elapsed or not
             if i % S.profileTicks == 0:
