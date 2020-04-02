@@ -6,6 +6,7 @@ import sys
 import time
 import datetime
 import requests
+import urllib.parse
 
 from colorama import Fore, Style
 from threading import Lock
@@ -217,8 +218,11 @@ if __name__ == "__main__":
     pmax1 = pRef
 
     # will track global delta on custom duration (S.alertInterval)
-    alertT0 = time.time()
-    alertDelta = 0
+    oiAlerts = OIDeltas(0, dispatcher)
+    oiAlerts.d1 = S.alertInterval
+    oiAlerts.d2 = 0 # d2 interval not used for now for alerts
+    oiAlertT0 = time.time()
+    # oiCooldown = timer(S.alertCooldown)
 
     # main data dicts mapping a price range with an OIDelta
     total = {}    # stores OIDeltas for the whole program runtime
@@ -255,7 +259,7 @@ if __name__ == "__main__":
             # add current delta
             oidTotal.add(delta)
             oidSession.add(delta)
-            alertDelta += delta
+            oiAlerts.add(delta)
             # print current level
             pprint("{}        OI: {:>16,.0f}".format(oidTotal, oi))
 
@@ -263,30 +267,31 @@ if __name__ == "__main__":
             i+=1
 
             # check if we reached alert threshold
-            if math.fabs(alertDelta) >= S.alertThreshold:
-                alertsDuration = time.time() - alertT0
-                msg = "{}:{} {:+,.0f} in {:.0f}s. Ticker: {:.1f}. Max/Min: {:.1f}/{:.1f} ({:.1f})".format(
+            if math.fabs(oiAlerts.d1Delta) >= S.alertThreshold:
+                alertsDuration = time.time() - oiAlertT0
+                alertsDuration = min(alertsDuration, oiAlerts.d1)
+                msg = "{}:{} - *{:.1f}*\noi: *{:+,.0f}* in *{:.0f}s*\nmin/max: {:.1f}/{:.1f} (*{:.1f}*)".format(
                     conf["exchange"],
                     conf["market"],
-                    alertDelta,
-                    alertsDuration,
                     pReal,
+                    oiAlerts.d1Delta,
+                    alertsDuration,
                     pmax, pmin,
                     pmax - pmin,
                 )
-                print()
-                pprint(msg + "\n")
+                pprint("alert reached")
+                print(msg + "\n")
                 if alertsDuration <= S.alertInterval:
                     if not conf["telegram"]["disabled"]:
                         try:
-                            resp = requests.get(telegramMsgFormat.format(msg))
+                            resp = requests.get(telegramMsgFormat.format(urllib.parse.quote(msg)))
                             if not resp.json()["ok"]:
                                 raise Exception(repr(resp.json()))
                         except Exception as err:
                             pprint("telegram api call error: %s" % err)
                 # reset alert data
-                alertDelta = 0
-                alertT0 = time.time()
+                oiAlerts.d1Delta = 0
+                oiAlertT0 = time.time()
                 pRef, pmax, pmin = pReal, pReal, pReal
 
             # check if current profile session is elapsed or not
