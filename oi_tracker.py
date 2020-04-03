@@ -218,7 +218,8 @@ if __name__ == "__main__":
     pmax1 = pRef
 
     # will track global delta on custom duration (S.alertInterval)
-    oiAlerts = OIDeltas(0, dispatcher)
+    oiAlerts = OIDeltas(0, dispatchTimer(S.interval))
+    oiAlerts.dispatcher.start()
     oiAlerts.d1 = S.alertInterval
     oiAlerts.d2 = 0 # d2 interval not used for now for alerts
     oiAlertT0 = time.time()
@@ -290,6 +291,7 @@ if __name__ == "__main__":
                         except Exception as err:
                             pprint("telegram api call error: %s" % err)
                 # reset alert data
+                oiAlerts.dispatcher.clear()
                 oiAlerts.d1Delta = 0
                 oiAlertT0 = time.time()
                 pRef, pmax, pmin = pReal, pReal, pReal

@@ -68,6 +68,10 @@ class dispatchTimer(Thread):
         self.interval = interval
         Thread.__init__(self)
 
+    def clear(self):
+        with self.lock:
+            self.callbacks = {}
+
     def add(self, delay, handler, *args):
         with self.lock:
             self.id += 1
