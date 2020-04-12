@@ -2,7 +2,6 @@ aiodns==1.1.1
 aiohttp==3.6.2
 async-timeout==3.0.1
 attrs==19.3.0
-ccxt==1.25.75
 ccxtpro @ git+https://github.com/kroitor/ccxt.pro.git#subdirectory=python
 certifi==2019.11.28
 cffi==1.14.0
