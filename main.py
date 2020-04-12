@@ -99,6 +99,8 @@ async def main():
     # will track global delta on custom duration (S.alertInterval)
     oiAlerts = OIDeltas(0, settings, S.alertInterval)
     oiAlertT0 = time.time()
+    pAlert = pRef
+    oiAlertCircles = ""
 
     # main data dicts mapping a price range with an OIDelta
     total = {}    # stores OIDeltas for the whole program runtime
@@ -148,14 +150,28 @@ async def main():
             # check if we reached alert threshold
             f = oiAlerts.frames[S.alertInterval]
             if math.fabs(f.value) >= S.alertThreshold:
+                # circles mic-mac
+                blue_diamond = "🔹"
+                orange_diamond = "🔸"
+                if f.value > 0:
+                    if orange_diamond in oiAlertCircles:
+                        oiAlertCircles = ""
+                    oiAlertCircles += blue_diamond
+                else:
+                    if blue_diamond in oiAlertCircles:
+                        oiAlertCircles = ""
+                    oiAlertCircles += orange_diamond
+
                 alertsDuration = time.time() - oiAlertT0
                 alertsDuration = min(alertsDuration, S.alertInterval)
-                msg = "{}:{} - *{:.1f}*\noi: *{:+,.0f}* in *{:.0f}s*\nmin/max: {:.1f}/{:.1f} (*{:.1f}*)".format(
+                msg = "*{}:{}* - {:.1f} (*{:+,.1f}*)\noi: {:+,.0f} in {:.0f}s {}\nmin/max: {:.1f}/{:.1f} ({:.1f})".format(
                     conf["exchange"],
                     conf["market"],
                     pReal,
+                    pReal - pAlert,
                     f.value,
                     alertsDuration,
+                    oiAlertCircles,
                     pmin, pmax,
                     pmax - pmin,
                 )
@@ -170,7 +186,8 @@ async def main():
                 await oiAlerts.cancel()
                 oiAlertT0 = time.time()
                 f.value = 0
-                pRef, pmax, pmin = pReal, pReal, pReal
+                pAlert, pRef, pmax, pmin = pReal, pReal, pReal, pReal
+
 
             # check if current profile session is elapsed or not
             if i % S.profileTicks == 0:
