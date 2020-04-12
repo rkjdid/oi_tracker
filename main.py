@@ -1,18 +1,15 @@
+import asyncio
 import logging
 import math
 import os
 import signal
 import sys
 import time
-import datetime
-import requests
-import urllib.parse
-
-from colorama import Fore, Style
-from threading import Lock
 
 from exchange import newExchange
-from util import unbuffered, dispatchTimer
+from oidelta import OIDeltas
+from telegram import Telegram
+from util import unbuffered, pprint, priceRange, coloredValue
 from envparse import env, ConfigurationError
 
 # parse environment
@@ -67,163 +64,41 @@ except ConfigurationError as err:
     print(err)
     exit(1)
 
-# setup telegram
-telegramPrefix = \
-    "https://api.telegram.org/bot{token}/{{method}}?chat_id={chatID}".format(
-        token=conf["telegram"]["bot"],
-        chatID=conf["telegram"]["chat"],
-    )
-telegramMsgFormat = telegramPrefix.format(method="sendMessage") + "&parse_mode=Markdown&text={}"
-telegramGetMyCmds = telegramPrefix.format(method="getMyCommands")
-if not conf["telegram"]["disabled"]:
-    # check that telegram is working
-    try:
-        resp = requests.get(telegramGetMyCmds)
-        respJson = resp.json()
-        if not "ok" in respJson or not respJson["ok"]:
-            raise Exception(repr(respJson))
-    except Exception as err:
-        print("couldn't init telegram: %s" % err)
-        print("disabling telegram alert")
-        conf["telegram"]["disabled"] = True
-
-# init ccxt exchange
-exchange = newExchange(conf)
-conf["market"] = exchange.market
-
-# OIDeltas tracks OI evolution between each data, on several configurable timeframes (d1, d2 and total/lifetime)
-class OIDeltas:
-    d1 = S.d1
-    d1Delta = 0
-
-    d2 = S.d2
-    d2Delta = 0
-
-    totalDelta = 0
-    lock = Lock()
-    last = 0
-    ticks = 0
-
-    def __init__(self, p, dispatcher: dispatchTimer):
-        self.price = p
-        self.dispatcher = dispatcher
-
-    def add(self, delta):
-        self.last = delta
-        self.ticks += 1
-        with self.lock:
-            if self.d1 > 0:
-                self.d1Delta += delta
-                self.dispatcher.add(self.d1, self.removeD1, delta)
-            if self.d2 > 0:
-                self.d2Delta += delta
-                self.dispatcher.add(self.d2, self.removeD2, delta)
-            self.totalDelta += delta
-
-    def removeD1(self, q):
-        with self.lock:
-            self.d1Delta -= q
-
-    def removeD2(self, q):
-        with self.lock:
-            self.d2Delta -= q
-
-    # how to display data
-    def repr(self, price=True, last=True, d1=True, d2=True, total=True, ticks=True, avg=True):
-        s = ""
-        if price:
-            s += coloredPrice(self.price) + "  "
-        if last:
-            s += "last: {}  ".format(coloredValue(self.last, S.interval))
-        if d1:
-            s += "{}s: {}  ".format(S.d1, coloredValue(self.d1Delta, S.d1))
-        if d2:
-            s += "{}s: {}  ".format(S.d2, coloredValue(self.d2Delta, S.d2))
-        if total:
-            s += "total: {}  ".format(coloredValue(self.totalDelta, self.ticks*S.interval))
-        if ticks:
-            s += "ticks: {:>4}  ".format(self.ticks)
-        if avg:
-            ticks = self.ticks if self.ticks > 0 else 1
-            s += "avg: {}  ".format(coloredValue(self.totalDelta / ticks, S.interval, threshold=S.threshold / 2))
-        return s.strip()
-
-    def __repr__(self):
-        return self.repr()
-
-def priceRange(p, step=10):
-    return p - p % step
-
-priceColors = [
-    Fore.LIGHTWHITE_EX,
-    Fore.LIGHTRED_EX,
-    Fore.LIGHTBLUE_EX,
-    Fore.LIGHTGREEN_EX,
-    Fore.LIGHTMAGENTA_EX,
-    Fore.LIGHTCYAN_EX,
-    Fore.LIGHTBLACK_EX,
-]
-
-# used to color price with above colors to differentiate between price levels
-def coloredPrice(p, step=S.pRange):
-    s = "{:>7,.0f}".format(p)
-    if args.nocolor:
-        return s
-    else:
-        return "{}{}{}".format(priceColors[int((p / step) % len(priceColors))], s, Style.RESET_ALL)
-
-
-def coloredValue(v, duration=1, threshold=S.threshold, padSize=12, decimals=0, plus=False):
-    s = '{:{prefix}{pad},.{decimals}f}'.format(v, prefix="+" if plus else ">", pad=padSize, decimals=decimals)
-    if args.nocolor:
-        return s
-    perSec = v / duration
-    if perSec >= threshold:
-        s = Fore.GREEN + s + Style.RESET_ALL
-    elif perSec <= -threshold:
-        s = Fore.RED + s + Style.RESET_ALL
-    return s
-
-def pprint(msg, *mods):
-    pre = ""
-    for mod in mods:
-        pre += mod
-    print("{} {}{}{}".format(
-        datetime.datetime.now().strftime("%m-%d %H:%M:%S"),
-        pre,
-        msg,
-        Style.RESET_ALL,
-    ))
+try:
+    telegram = Telegram(conf["telegram"])
+except Exception as err:
+    print(err)
 
 def bye(a, b):
     print("\nbye")
     os._exit(0)
 
-if __name__ == "__main__":
+async def main():
     signal.signal(signal.SIGINT, bye)
     signal.signal(signal.SIGTERM, bye)
-    dispatcher = dispatchTimer(S.interval)
-    dispatcher.start()
+
+
+    global conf
+    settings = S()
+
+    # init ccxt exchange
+    exchange = newExchange(conf)
+    conf["market"] = exchange.market
 
     pprint("tracking OI levels for {}:{}".format(exchange.name, exchange.market))
 
-    exchange.fetchTicker()
+    await exchange.fetchTicker()
     oi0 = exchange.getOI()
     time.sleep(S.interval)
     pRef = exchange.getPrice()
-    p0 = priceRange(pRef)
     pmin = pRef
     pmin1 = pRef
     pmax = pRef
     pmax1 = pRef
 
     # will track global delta on custom duration (S.alertInterval)
-    oiAlerts = OIDeltas(0, dispatchTimer(S.interval))
-    oiAlerts.dispatcher.start()
-    oiAlerts.d1 = S.alertInterval
-    oiAlerts.d2 = 0 # d2 interval not used for now for alerts
+    oiAlerts = OIDeltas(0, settings, S.alertInterval)
     oiAlertT0 = time.time()
-    # oiCooldown = timer(S.alertCooldown)
 
     # main data dicts mapping a price range with an OIDelta
     total = {}    # stores OIDeltas for the whole program runtime
@@ -232,7 +107,7 @@ if __name__ == "__main__":
     while True:
         try:
             # fetch ticker data & calculate delta oi (oi - previousOI)
-            exchange.fetchTicker()
+            await exchange.fetchTicker()
             oi = exchange.getOI()
             delta = oi - oi0
             oi0 = oi
@@ -250,17 +125,20 @@ if __name__ == "__main__":
 
             # check that OIDelta exists for current price range in our data dicts, if not create them
             if not p in total:
-                total[p] = OIDeltas(p, dispatcher)
+                total[p] = OIDeltas(p, settings, settings.d1, settings.d2, 0)
             if not p in session:
-                session[p] = OIDeltas(p, dispatcher)
+                session[p] = OIDeltas(p, settings, settings.d1, settings.d2, 0)
 
             # retreive OIDeltas object for the current price range, for both dicts
             oidTotal = total[p]
             oidSession = session[p]
             # add current delta
-            oidTotal.add(delta)
-            oidSession.add(delta)
-            oiAlerts.add(delta)
+            tasks = [
+                asyncio.create_task(oidTotal.add(delta)),
+                asyncio.create_task(oidSession.add(delta)),
+                asyncio.create_task(oiAlerts.add(delta)),
+            ]
+            await asyncio.gather(*tasks)
             # print current level
             pprint("{}        OI: {:>16,.0f}".format(oidTotal, oi))
 
@@ -268,32 +146,30 @@ if __name__ == "__main__":
             i+=1
 
             # check if we reached alert threshold
-            if math.fabs(oiAlerts.d1Delta) >= S.alertThreshold:
+            f = oiAlerts.frames[S.alertInterval]
+            if math.fabs(f.value) >= S.alertThreshold:
                 alertsDuration = time.time() - oiAlertT0
-                alertsDuration = min(alertsDuration, oiAlerts.d1)
+                alertsDuration = min(alertsDuration, S.alertInterval)
                 msg = "{}:{} - *{:.1f}*\noi: *{:+,.0f}* in *{:.0f}s*\nmin/max: {:.1f}/{:.1f} (*{:.1f}*)".format(
                     conf["exchange"],
                     conf["market"],
                     pReal,
-                    oiAlerts.d1Delta,
+                    f.value,
                     alertsDuration,
-                    pmax, pmin,
+                    pmin, pmax,
                     pmax - pmin,
                 )
                 pprint("alert reached")
                 print(msg + "\n")
                 if alertsDuration <= S.alertInterval:
-                    if not conf["telegram"]["disabled"]:
                         try:
-                            resp = requests.get(telegramMsgFormat.format(urllib.parse.quote(msg)))
-                            if not resp.json()["ok"]:
-                                raise Exception(repr(resp.json()))
+                            telegram.sendMessage(msg)
                         except Exception as err:
-                            pprint("telegram api call error: %s" % err)
+                            pprint(err)
                 # reset alert data
-                oiAlerts.dispatcher.clear()
-                oiAlerts.d1Delta = 0
+                await oiAlerts.cancel()
                 oiAlertT0 = time.time()
+                f.value = 0
                 pRef, pmax, pmin = pReal, pReal, pReal
 
             # check if current profile session is elapsed or not
@@ -315,11 +191,14 @@ if __name__ == "__main__":
                     pmin,
                     pmax,
                     coloredValue(pmax-pmin, 1, threshold=100, padSize=4, decimals=1),
-                    coloredValue(totalDelta, S.interval * S.profileTicks),
+                    coloredValue(totalDelta, S.interval * S.profileTicks, threshold=S.threshold),
                 ))
                 # reset current profile summary session
                 session = {}
                 pRef, pmax, pmin = pReal, pReal, pReal
         except:
             logging.exception("unhandled exception")
-        time.sleep(S.interval)
+        await asyncio.sleep(S.interval)
+
+if __name__ == '__main__':
+    asyncio.run(main())

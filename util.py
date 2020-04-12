@@ -1,7 +1,8 @@
-import logging
-import time
-from threading import Thread, Event, Lock
+import datetime
+from threading import Thread
 from functools import wraps
+
+from colorama import Fore, Style
 
 def detach(target):
     @wraps(target)
@@ -29,70 +30,42 @@ class unbuffered(object):
     def __getattr__(self, attr):
         return getattr(self.stream, attr)
 
-class timer:
-    def __init__(self, duration):
-        self.duration = duration
-        self.running = False
-        self.cancel = Event()
-        self.lock = Lock()
+def priceRange(p, step=10):
+    return p - p % step
 
-    def start(self):
-        with self.lock:
-            if self.running:
-                self.cancel.set()
-            self.running = True
-        self.cooldown()
+priceColors = [
+    Fore.LIGHTWHITE_EX,
+    Fore.LIGHTRED_EX,
+    Fore.LIGHTBLUE_EX,
+    Fore.LIGHTGREEN_EX,
+    Fore.LIGHTMAGENTA_EX,
+    Fore.LIGHTCYAN_EX,
+    Fore.LIGHTBLACK_EX,
+]
 
-    @detach
-    def cooldown(self):
-        self.cancel.wait(self.duration)
-        with self.lock:
-            if self.cancel.is_set():
-                self.cancel.clear()
-                return
-            self.running = False
+# used to color price with above colors to differentiate between price levels
+def coloredPrice(p, step=10, nocolor=False):
+    s = "{:>7,.0f}".format(p)
+    if nocolor:
+        return s
+    else:
+        return "{}{}{}".format(priceColors[int((p / step) % len(priceColors))], s, Style.RESET_ALL)
 
-class dispatchTimer(Thread):
-    id = 0
-    lock = Lock()
-    callbacks = {}
-    interval = 5
 
-    class delayedCallback:
-        def __init__(self, deadline, handler, *args):
-            self.deadline = deadline
-            self.handler = handler
-            self.args = args
+def coloredValue(v, duration=1, threshold=5000, padSize=12, decimals=0, plus=False, nocolor=False):
+    s = '{:{prefix}{pad},.{decimals}f}'.format(v, prefix="+" if plus else ">", pad=padSize, decimals=decimals)
+    if nocolor:
+        return s
+    perSec = v / duration
+    if perSec >= threshold:
+        s = Fore.GREEN + s + Style.RESET_ALL
+    elif perSec <= -threshold:
+        s = Fore.RED + s + Style.RESET_ALL
+    return s
 
-    def __init__(self, interval=5):
-        self.interval = interval
-        Thread.__init__(self)
 
-    def clear(self):
-        with self.lock:
-            self.callbacks = {}
-
-    def add(self, delay, handler, *args):
-        with self.lock:
-            self.id += 1
-            self.callbacks[self.id] =\
-                dispatchTimer.delayedCallback(
-                    time.time() + delay, handler, *args)
-
-    def run(self):
-        while True:
-            try:
-                self.tick()
-            except:
-                logging.exception("dispatchTimer unhandled exception")
-
-    def tick(self):
-        time.sleep(self.interval)
-        toClear = []
-        with self.lock:
-            for i, cb in self.callbacks.items():
-                if time.time() > cb.deadline:
-                    cb.handler(*cb.args)
-                    toClear.append(i)
-            for i in toClear:
-                del (self.callbacks[i])
+def pprint(*msg):
+    print(datetime.datetime.now().strftime("%m-%d %H:%M:%S"),
+        *msg,
+        Style.RESET_ALL,
+    )

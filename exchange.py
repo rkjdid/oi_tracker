@@ -1,6 +1,7 @@
+import asyncio
 from abc import abstractmethod
 
-import ccxt
+import ccxtpro as ccxt
 
 def newExchange(conf):
     ex = conf['exchange']
@@ -15,15 +16,48 @@ class Exchange:
     def __init__(self, conf, ccxt_ex_class, market="BTC/USD"):
         self.conf = conf
         self.ccxt = ccxt_ex_class(self.conf['ccxt'])
-        self.markets = self.ccxt.load_markets()
         self.market = market
         self.ticker = None
-        pass
+        self.oi = None
+        self.trades = []
+        self.tradesLock = asyncio.Lock()
+        self.liquidationLock = asyncio.Lock()
 
-    def fetchTicker(self, market=None):
+    async def fetchTicker(self, market=None):
         if not market:
             market = self.market
-        self.ticker = self.ccxt.fetch_ticker(market)
+        self.ticker = await self.ccxt.fetch_ticker(market)
+        return self.ticker
+
+    async def watchTicker(self, newOI: asyncio.Event):
+        while True:
+            self.ticker = await self.ccxt.watch_ticker()
+            oi = self.getOI()
+            if oi != self.oi:
+                self.oi = oi
+                newOI.set()
+
+    async def watchTrades(self):
+        while True:
+            trade = await self.ccxt.watchTrades(self.market)
+            with self.tradesLock:
+                self.trades.append(trade)
+
+    async def watchLiquidations(self, market=None):
+        raise NotImplemented()
+
+    def computeTrades(self):
+        deltaVolume = 0
+        with self.tradesLock:
+            for t in self.trades:
+                if t["type"].lower() == "sell":
+                    v = -v
+                deltaVolume += v
+            self.trades = []
+        return deltaVolume
+
+    async def computeLiquidations(self):
+        deltaLiquidations = 0
 
     @abstractmethod
     def getOI(self):
@@ -44,6 +78,11 @@ class Bitmex(Exchange):
 
     def getPrice(self):
         return self.ticker["info"]["midPrice"]
+
+    def watchLiquidations(self, market=None):
+        if not market:
+            market = self.market
+        return self.ccxt.watch_liquidations(market)
 
 class Deribit(Exchange):
     name = 'Deribit'
