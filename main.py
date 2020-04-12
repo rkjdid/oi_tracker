@@ -87,7 +87,11 @@ async def main():
 
     pprint("tracking OI levels for {}:{}".format(exchange.name, exchange.market))
 
-    await exchange.fetchTicker()
+    newOI = asyncio.Event()
+    asyncio.create_task(exchange.watchTicker(newOI))
+    await newOI.wait()
+    newOI.clear()
+
     oi0 = exchange.getOI()
     time.sleep(S.interval)
     pRef = exchange.getPrice()
@@ -106,10 +110,12 @@ async def main():
     total = {}    # stores OIDeltas for the whole program runtime
     session = {}  # partial OIDeltas, works in the same way as total, but is reset every profileTicks
     i = 0
+
     while True:
         try:
             # fetch ticker data & calculate delta oi (oi - previousOI)
-            await exchange.fetchTicker()
+            await newOI.wait()
+            newOI.clear()
             oi = exchange.getOI()
             delta = oi - oi0
             oi0 = oi
@@ -215,7 +221,6 @@ async def main():
                 pRef, pmax, pmin = pReal, pReal, pReal
         except:
             logging.exception("unhandled exception")
-        await asyncio.sleep(S.interval)
 
 if __name__ == '__main__':
     asyncio.run(main())
