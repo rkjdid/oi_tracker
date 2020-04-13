@@ -71,13 +71,15 @@ class OIDeltas:
         await asyncio.gather(*t)
 
     # how to display data
-    def repr(self, price=True, last=True, ticks=True):
+    def repr(self, price=True, last=True, ticks=True, ignore=()):
         s = ""
         if price:
             s += coloredPrice(self.price) + "  "
         if last:
             s += "last: {}  ".format(coloredValue(self.last, self.interval))
         for _, f in self.frames.items():
+            if f.delay in ignore:
+                continue
             if f.delay > 0:
                 s += "{}s: {}  ".format(f.delay, coloredValue(f.value, f.delay))
             else:

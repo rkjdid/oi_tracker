@@ -206,7 +206,7 @@ async def main():
                 ))
                 totalDelta = 0
                 for p, oid in sorted(session.items(), reverse=True):
-                    print("  {}".format(oid.repr(last=False, d1=False, d2=False)))
+                    print("  {}".format(oid.repr(last=False, ignore=(settings.d1, settings.d2))))
                     totalDelta += oid.totalDelta
                 print("\n    ticker: {} ({})  min/max: {:.1f}/{:.1f} (<> {})  oi: {}\n".format(
                     pReal,
