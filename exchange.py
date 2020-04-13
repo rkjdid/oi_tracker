@@ -31,7 +31,11 @@ class Exchange:
 
     async def watchTicker(self, newOI: asyncio.Event):
         while True:
-            self.ticker = await self.ccxt.watch_ticker(self.market)
+            if self.ccxt.has("watchTicker"):
+                self.ticker = await self.ccxt.watch_ticker(self.market)
+            else:
+                await asyncio.sleep(2)
+                await self.fetchTicker()
             oi = self.getOI()
             if oi != self.oi:
                 self.oi = oi
