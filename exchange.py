@@ -1,7 +1,10 @@
 import asyncio
+import logging
 from abc import abstractmethod
 
 import ccxtpro as ccxt
+from util import pprint
+
 
 def newExchange(conf):
     ex = conf['exchange']
@@ -23,6 +26,9 @@ class Exchange:
         self.tradesLock = asyncio.Lock()
         self.liquidationLock = asyncio.Lock()
 
+    def __repr__(self):
+        return "{}:{}".format(self.name, self.market)
+
     async def fetchTicker(self, market=None):
         if not market:
             market = self.market
@@ -31,11 +37,16 @@ class Exchange:
 
     async def watchTicker(self, newOI: asyncio.Event):
         while True:
-            if "watchTicker" in self.ccxt.has:
-                self.ticker = await self.ccxt.watch_ticker(self.market)
-            else:
-                await asyncio.sleep(2)
-                await self.fetchTicker()
+            try:
+                if "watchTicker" in self.ccxt.has:
+                    self.ticker = await self.ccxt.watch_ticker(self.market)
+                else:
+                    await asyncio.sleep(2)
+                    await self.fetchTicker()
+            except ccxt.base.errors.ExchangeNotAvailable as err:
+                pprint("%s: %s" % (self, err))
+            except:
+                logging.exception("watchTicker unhandled exception")
             oi = self.getOI()
             if oi != self.oi:
                 self.oi = oi
