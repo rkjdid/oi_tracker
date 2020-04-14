@@ -92,8 +92,8 @@ async def main():
     await newOI.wait()
     newOI.clear()
 
+    t0 = time.time()
     oi0 = exchange.getOI()
-    time.sleep(S.interval)
     pRef = exchange.getPrice()
     pmin = pRef
     pmin1 = pRef
@@ -199,11 +199,12 @@ async def main():
             if i % S.profileTicks == 0:
                 # current session is elapsed, S.profileTicks reached, so we print profile summary
                 print()
-                pprint("profile for %s:%s, last %d minutes:" % (
+                pprint("profile for %s:%s, last %.0f minutes:" % (
                     exchange.name,
                     exchange.market,
-                    (S.interval * S.profileTicks) / 60,
+                    (time.time() - t0) / 60,
                 ))
+                t0 = time.time()
                 totalDelta = 0
                 for p, oid in sorted(session.items(), reverse=True):
                     print("  {}".format(oid.repr(last=False, ignore=(settings.d1, settings.d2))))
