@@ -207,7 +207,7 @@ async def main():
                 totalDelta = 0
                 for p, oid in sorted(session.items(), reverse=True):
                     print("  {}".format(oid.repr(last=False, ignore=(settings.d1, settings.d2))))
-                    totalDelta += oid.totalDelta
+                    totalDelta += oid.frames[0].value
                 print("\n    ticker: {} ({})  min/max: {:.1f}/{:.1f} (<> {})  oi: {}\n".format(
                     pReal,
                     coloredValue(pReal-pRef, 1, threshold=50, padSize=4, decimals=1, plus=True),
